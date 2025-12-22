@@ -1,361 +1,74 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
-  <meta charset="UTF-8">
-  <title>Article Assist</title>
-  <link rel="stylesheet" href="style.css">
-
-  <!-- PDF.js -->
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.min.js"></script>
-
-  <style>
-    body {
-      font-family: Arial, sans-serif;
-      margin: 20px;
-    }
-
-    #pdfContainer {
-      position: relative;
-      display: inline-block;
-      border: 1px solid #ccc;
-    }
-
-    #pdfCanvas {
-      display: block;
-    }
-
-    /* Text layer over the PDF */
-    #textLayer {
-      position: absolute;
-      top: 0;
-      left: 0;
-      color: transparent; /* default text is invisible */
-      pointer-events: none; /* only clickable spans will accept events */
-    }
-
-    /* Clickable scientific terms */
-    .sci-term {
-      color: #0645AD;          /* classic link blue */
-      pointer-events: auto;    /* re-enable events for clickable terms */
-      cursor: pointer;
-    }
-
-    #tooltip {
-      position: absolute;
-      background: #ffffff;
-      border: 1px solid #ccc;
-      padding: 10px;
-      max-width: 300px;
-      border-radius: 6px;
-      box-shadow: 0 2px 8px rgba(0,0,0,0.2);
-      z-index: 1000;
-      display: none;
-    }
-
-    #controls {
-      margin-bottom: 15px;
-    }
-
-    #dictionarySelect {
-      margin-left: 8px;
-      padding: 4px 6px;
-    }
-  </style>
+  <meta charset="UTF-8" />
+  <title>Article Term Explorer</title>
+  <link rel="stylesheet" href="style.css" />
 </head>
-
 <body>
+  <header>
+    <h1>Article Term Explorer</h1>
+    <p>Paste a URL to a scientific article to explore its terminology.</p>
+  </header>
 
-  <h1>Welcome to Article Assist</h1>
-  <p>Created by CereuslyDiluted</p>
-  <p>This site will help you understand scientific articles with clarity, humor, and microbiology‑nerd energy.</p>
+  <main>
+    <section id="controls">
+      <label for="articleUrl" class="field-label">Article URL</label>
+      <div class="url-input-row">
+        <input
+          type="url"
+          id="articleUrl"
+          placeholder="https://example.com/your-article"
+        />
+        <button id="fetchArticleBtn">Extract & Analyze</button>
+      </div>
 
-  <div id="controls">
-    <label for="dictionarySelect"><strong>Select dictionary:</strong></label>
-    <select id="dictionarySelect">
-      <option value="micro">Microbiology</option>
-      <option value="bio">General Biology</option>
-      <option value="immuno">Immunology</option>
-      <option value="genetics">Genetics</option>
-      <option value="chem">Chemistry / Biochemistry</option>
-      <option value="combined">All scientific terms</option>
-    </select>
+      <div class="options-row">
+        <div class="option-group">
+          <label for="dictionaryMode" class="field-label">Scientific dictionary set</label>
+          <select id="dictionaryMode">
+            <option value="combined">Combined (all scientific domains)</option>
+            <option value="micro">Microbiology</option>
+            <option value="genetics">Genetics</option>
+            <option value="immunology">Immunology</option>
+            <option value="biology">General Biology</option>
+            <option value="chemistry">Chemistry / Biochemistry</option>
+          </select>
+        </div>
+        <div class="option-group">
+          <label class="field-label">Definitions</label>
+          <div class="checkbox-row">
+            <label>
+              <input type="checkbox" id="toggleScientific" checked />
+              Scientific terms
+            </label>
+            <label>
+              <input type="checkbox" id="toggleSimpleEnglish" checked />
+              Simple English terms
+            </label>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section id="statusSection">
+      <div id="statusMessage"></div>
+    </section>
+
+    <section id="articleSection">
+      <h2 id="articleTitle"></h2>
+      <p id="articleMeta"></p>
+      <div id="articleContent"></div>
+    </section>
+  </main>
+
+  <!-- Tooltip (shared for scientific + English) -->
+  <div id="tooltip" class="tooltip hidden">
+    <div id="tooltipTerm" class="tooltip-term"></div>
+    <div id="tooltipSource" class="tooltip-source"></div>
+    <div id="tooltipDefinition" class="tooltip-definition"></div>
   </div>
 
-  <h2>Upload a PDF</h2>
-  <input type="file" id="fileInput" accept="application/pdf">
-
-  <div id="pdfContainer" style="margin-top:20px;">
-    <canvas id="pdfCanvas"></canvas>
-    <div id="textLayer"></div>
-  </div>
-
-  <div id="tooltip"></div>
-
-  <script>
-    // ----- STOP WORDS -----
-    const stopWords = new Set([
-      "the","and","a","an","of","to","in","is","it","that","for","on","with","as",
-      "are","was","were","be","by","this","from","or","at","but","not","your",
-      "have","has","had","their","they","them","its","if","then","there","so",
-      "such","these","those","can","will","just","about","into","up","out","over",
-      "than","also","may","might","should","would","could","we","our","us","you",
-      "he","she","his","her","i"
-    ]);
-
-    // ----- BASIC NAME FILTERING -----
-    const commonNames = new Set([
-      "smith","johnson","williams","brown","jones","garcia","miller","davis",
-      "james","mary","john","robert","patricia","jennifer","michael","linda",
-      "david","elizabeth","richard","barbara","joseph","susan"
-    ]);
-
-    // ----- SCIENTIFIC GLOSSARIES (TERMS / ACRONYMS) -----
-    const glossaries = {
-      micro: {
-        "cell": "The basic structural, functional, and biological unit of all living organisms.",
-        "culture": "The process of growing microorganisms or cells in controlled conditions.",
-        "biofilm": "A structured community of microorganisms encapsulated within a self-produced polymeric matrix.",
-        "plasmid": "A small, circular DNA molecule found in bacteria that replicates independently of chromosomal DNA.",
-        "pathogen": "A microorganism that can cause disease.",
-        "antibiotic": "A compound that kills or inhibits the growth of bacteria.",
-        "gram-negative": "Bacteria that do not retain the crystal violet stain in the Gram stain test and have an outer membrane.",
-        "gram-positive": "Bacteria that retain the crystal violet stain in the Gram stain test and lack an outer membrane."
-      },
-      bio: {
-        "mitosis": "A type of cell division that results in two genetically identical daughter cells.",
-        "meiosis": "A type of cell division that reduces the chromosome number by half, producing gametes.",
-        "photosynthesis": "The process by which organisms convert light energy into chemical energy stored in sugars.",
-        "homeostasis": "The maintenance of a stable internal environment in an organism.",
-        "ribosome": "A molecular machine that synthesizes proteins from mRNA templates.",
-        "organelle": "A specialized subunit within a cell that has a specific function."
-      },
-      immuno: {
-        "cytokine": "A small protein released by cells that affects the behavior of other cells, especially in the immune system.",
-        "antigen": "A molecule or structure that can be recognized by the immune system and induce an immune response.",
-        "antibody": "A protein produced by B cells that specifically binds to an antigen.",
-        "t-cell": "A type of lymphocyte that plays a central role in cell-mediated immunity.",
-        "b-cell": "A type of lymphocyte that produces antibodies.",
-        "macrophage": "A large phagocytic cell that engulfs and digests cellular debris and pathogens."
-      },
-      genetics: {
-        "genome": "The complete set of genetic material present in a cell or organism.",
-        "allele": "One of two or more alternative forms of a gene at a given locus.",
-        "mutation": "A change in the nucleotide sequence of DNA.",
-        "gene": "A segment of DNA that encodes a functional product, typically a protein.",
-        "transcription": "The process of synthesizing RNA from a DNA template.",
-        "translation": "The process of synthesizing a polypeptide chain from an mRNA template.",
-        "chromosome": "A DNA-protein structure that carries genetic information."
-      }
-    };
-
-    // ----- CHEMICAL / BIOCHEMICAL GLOSSARY (B + C style: general + bio-focused) -----
-    const chemicalGlossary = {
-      // Elements and ions
-      "h": "Hydrogen.",
-      "h+": "Hydrogen ion (proton).",
-      "he": "Helium.",
-      "li": "Lithium.",
-      "na": "Sodium.",
-      "na+": "Sodium ion.",
-      "k": "Potassium.",
-      "k+": "Potassium ion.",
-      "mg": "Magnesium.",
-      "mg2+": "Magnesium ion.",
-      "ca": "Calcium.",
-      "ca2+": "Calcium ion.",
-      "fe": "Iron.",
-      "fe2+": "Ferrous ion (Fe²⁺).",
-      "fe3+": "Ferric ion (Fe³⁺).",
-      "cl": "Chlorine.",
-      "cl-": "Chloride ion.",
-      "zn": "Zinc.",
-      "zn2+": "Zinc ion.",
-      "cu": "Copper.",
-      "cu2+": "Copper(II) ion.",
-      "n": "Nitrogen.",
-      "o": "Oxygen.",
-
-      // Simple molecules
-      "h2o": "Water.",
-      "co2": "Carbon dioxide.",
-      "o2": "Molecular oxygen.",
-      "n2": "Molecular nitrogen.",
-      "nh3": "Ammonia.",
-      "ch4": "Methane.",
-      "hcl": "Hydrochloric acid.",
-      "nacl": "Sodium chloride.",
-
-      // Biologically important molecules
-      "atp": "Adenosine triphosphate, the primary energy currency of the cell.",
-      "adp": "Adenosine diphosphate.",
-      "amp": "Adenosine monophosphate.",
-      "nad+": "Nicotinamide adenine dinucleotide (oxidized form).",
-      "nadh": "Nicotinamide adenine dinucleotide (reduced form).",
-      "fad": "Flavin adenine dinucleotide.",
-      "fadh2": "Reduced form of flavin adenine dinucleotide.",
-      "gfp": "Green fluorescent protein, a reporter molecule used in biology.",
-      "dna": "Deoxyribonucleic acid, the carrier of genetic information.",
-      "rna": "Ribonucleic acid, involved in coding, decoding, regulation and expression of genes."
-    };
-
-    // Merge all glossaries + chemical glossary into "combined"
-    glossaries.chem = chemicalGlossary;
-    glossaries.combined = {
-      ...glossaries.micro,
-      ...glossaries.bio,
-      ...glossaries.immuno,
-      ...glossaries.genetics,
-      ...chemicalGlossary
-    };
-
-    // ----- NORMALIZE CHEMICAL STRING -----
-    function normalizeChem(str) {
-      return str
-        .replace(/\s+/g, "")       // remove spaces
-        .replace(/₂/g, "2")
-        .replace(/³/g, "3")
-        .replace(/⁴/g, "4")
-        .replace(/⁺/g, "+")
-        .replace(/⁻/g, "-")
-        .toLowerCase();
-    }
-
-    // ----- TOOLTIP CLOSE ON OUTSIDE CLICK -----
-    document.addEventListener("click", function(e) {
-      const tooltip = document.getElementById("tooltip");
-      if (!tooltip.contains(e.target)) {
-        tooltip.style.display = "none";
-      }
-    });
-
-    // ----- LOAD AND RENDER PDF (FIRST PAGE) -----
-    const fileInput = document.getElementById("fileInput");
-    const canvas = document.getElementById("pdfCanvas");
-    const textLayerDiv = document.getElementById("textLayer");
-    const tooltip = document.getElementById("tooltip");
-
-    const pdfjsLibConfig = pdfjsLib;
-    pdfjsLibConfig.GlobalWorkerOptions.workerSrc =
-      "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.worker.min.js";
-
-    fileInput.addEventListener("change", async function() {
-      const file = this.files[0];
-      if (!file) return;
-
-      const reader = new FileReader();
-
-      reader.onload = async function() {
-        const typedarray = new Uint8Array(this.result);
-        const loadingTask = pdfjsLib.getDocument(typedarray);
-        const pdf = await loadingTask.promise;
-
-        // For now, render only the first page
-        const page = await pdf.getPage(1);
-        const scale = 1.5;
-        const viewport = page.getViewport({ scale });
-
-        // Prepare canvas
-        const context = canvas.getContext("2d");
-        canvas.width = viewport.width;
-        canvas.height = viewport.height;
-
-        // Resize and position textLayer over canvas
-        textLayerDiv.style.width = viewport.width + "px";
-        textLayerDiv.style.height = viewport.height + "px";
-
-        // Render PDF page to canvas
-        const renderContext = {
-          canvasContext: context,
-          viewport: viewport
-        };
-        await page.render(renderContext).promise;
-
-        // Get text content for overlay
-        const textContent = await page.getTextContent();
-
-        // Clear existing text layer
-        textLayerDiv.innerHTML = "";
-
-        // Get selected glossary
-        const selectedDict = document.getElementById("dictionarySelect").value;
-        const baseGlossary = glossaries[selectedDict] || {};
-
-        // Build overlay spans
-        textContent.items.forEach(function(item) {
-          const str = item.str;
-          if (!str || !str.trim()) return;
-
-          const raw = str.trim();
-          const lower = raw.toLowerCase();
-          const normChem = normalizeChem(raw);
-
-          // quick filters
-          if (stopWords.has(lower)) {
-            // still add invisible text for accessibility, but not clickable
-          }
-
-          if (commonNames.has(lower)) {
-            // treat as non-clickable name
-          }
-
-          // Determine if this chunk should be clickable:
-          // 1) If it's explicitly in the selected glossary
-          // 2) Or in the chemical glossary (normalized)
-          // 3) Or looks like an acronym (e.g., PCR, DNA, ATP) and in combined glossary
-          const combinedGlossary = glossaries.combined;
-          let definition = null;
-
-          if (baseGlossary[lower]) {
-            definition = baseGlossary[lower];
-          } else if (chemicalGlossary[normChem]) {
-            definition = chemicalGlossary[normChem];
-          } else if (/^[A-Z0-9\-]{2,}$/.test(raw) && combinedGlossary[lower]) {
-            // all-caps/acronym style, present in combined glossary
-            definition = combinedGlossary[lower];
-          }
-
-          // Create span for this text item
-          const span = document.createElement("span");
-          span.textContent = raw;
-
-          // Position the span using the transform matrix
-          const transform = item.transform;
-          const x = transform[4];
-          const y = transform[5];
-
-          span.style.position = "absolute";
-          span.style.left = x * scale + "px";
-          // PDF.js coordinates: y is from bottom; we flip for CSS top
-          span.style.top = (viewport.height - y * scale) + "px";
-
-          // Basic font scaling
-          const fontSize = Math.sqrt(transform[0] * transform[0] + transform[1] * transform[1]) * scale;
-          span.style.fontSize = fontSize + "px";
-
-          if (definition) {
-            // Make it a blue, clickable sci-term
-            span.classList.add("sci-term");
-
-            span.addEventListener("click", function(event) {
-              event.stopPropagation();
-
-              tooltip.style.left = event.pageX + "px";
-              tooltip.style.top = event.pageY + "px";
-              tooltip.innerHTML = `<strong>${raw}</strong><br>${definition}`;
-              tooltip.style.display = "block";
-            });
-          } else {
-            // Non-clickable text: keep invisible but present for alignment/accessibility
-            span.style.color = "transparent";
-          }
-
-          textLayerDiv.appendChild(span);
-        });
-      };
-
-      reader.readAsArrayBuffer(file);
-    });
-  </script>
-
+  <script src="script.js"></script>
 </body>
 </html>
