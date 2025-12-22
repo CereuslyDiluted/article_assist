@@ -4,58 +4,145 @@
   <meta charset="UTF-8">
   <title>Article Assist</title>
   <link rel="stylesheet" href="style.css">
+
+  <!-- PDF.js -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.min.js"></script>
+
+  <!-- Tooltip + word styling -->
+  <style>
+    #tooltip {
+      position: absolute;
+      background: #ffffff;
+      border: 1px solid #ccc;
+      padding: 10px;
+      max-width: 250px;
+      border-radius: 6px;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.2);
+      z-index: 1000;
+      display: none;
+    }
+    .word {
+      cursor: pointer;
+      color: #0055aa;
+    }
+    .word:hover {
+      text-decoration: underline;
+    }
+    #pdfViewer {
+      width: 100%;
+      height: 600px;
+      border: 1px solid #ccc;
+      margin-bottom: 20px;
+    }
+  </style>
 </head>
 
 <body>
-  
+
   <h1>Welcome to Article Assist</h1>
   <p>Created by CereuslyDiluted</p>
-
   <p>This site will help you understand scientific articles with clarity, humor, and microbiology‑nerd energy.</p>
 
+  <h2>Upload a PDF</h2>
   <input type="file" id="fileInput" accept="application/pdf">
 
-  
-<script>
-document.getElementById('fileInput').addEventListener('change', async function() {
-    const file = this.files[0];
-    const reader = new FileReader();
+  <!-- Full PDF viewer -->
+  <iframe id="pdfViewer"></iframe>
 
-    reader.onload = async function() {
+  <!-- Extracted text with clickable words -->
+  <div id="output"></div>
+
+  <!-- Tooltip for definitions -->
+  <div id="tooltip"></div>
+
+  <script>
+    // Close tooltip when clicking anywhere else
+    document.addEventListener("click", function(e) {
+      const tooltip = document.getElementById("tooltip");
+      if (!tooltip.contains(e.target)) {
+        tooltip.style.display = "none";
+      }
+    });
+
+    document.getElementById('fileInput').addEventListener('change', async function() {
+      const file = this.files[0];
+
+      // Display PDF in viewer
+      const pdfURL = URL.createObjectURL(file);
+      document.getElementById("pdfViewer").src = pdfURL;
+
+      // Extract text for clickable definitions
+      const reader = new FileReader();
+
+      reader.onload = async function() {
         const typedarray = new Uint8Array(this.result);
 
         const pdf = await pdfjsLib.getDocument(typedarray).promise;
         let fullText = "";
 
+        // Extract text from each page
         for (let i = 1; i <= pdf.numPages; i++) {
-            const page = await pdf.getPage(i);
-            const content = await page.getTextContent();
-            const strings = content.items.map(item => item.str);
-            fullText += strings.join(" ") + " ";
+          const page = await pdf.getPage(i);
+          const content = await page.getTextContent();
+          const strings = content.items.map(item => item.str);
+          fullText += strings.join(" ") + " ";
         }
 
-        const words = fullText.toLowerCase().match(/\b[a-z]+\b/g);
-        const dictionary = {};
+        // Split into words
+        const words = fullText.match(/\b[a-zA-Z]+\b/g);
 
-        words.forEach(word => {
-            dictionary[word] = (dictionary[word] || 0) + 1;
+        // STOP WORD REMOVAL
+        const stopWords = new Set([
+          "the","and","a","an","of","to","in","is","it","that","for","on","with","as",
+          "are","was","were","be","by","this","from","or","at","but","not","your",
+          "have","has","had","their","they","them","its","if","then","there","so",
+          "such","these","those","can","will","just","about","into","up","out","over",
+          "than","also","may","might","should","would","could"
+        ]);
+
+        const filteredWords = words.filter(w => !stopWords.has(w.toLowerCase()));
+
+        // Convert words into clickable spans
+        const outputDiv = document.getElementById("output");
+        outputDiv.innerHTML = ""; // clear previous content
+
+        filteredWords.forEach(word => {
+          const span = document.createElement("span");
+          span.textContent = word + " ";
+          span.classList.add("word");
+
+          span.addEventListener("click", async function(event) {
+            event.stopPropagation(); // prevent closing tooltip immediately
+
+            const tooltip = document.getElementById("tooltip");
+
+            // Fetch definition
+            let definition = "No definition found.";
+            try {
+              const response = await fetch(`https://api.dictionaryapi.dev/api/v2/entries/en/${word.toLowerCase()}`);
+              const data = await response.json();
+
+              if (Array.isArray(data) && data[0].meanings) {
+                definition = data[0].meanings[0].definitions[0].definition;
+              }
+            } catch (err) {
+              definition = "Error fetching definition.";
+            }
+
+            // Position tooltip near the clicked word
+            tooltip.style.left = event.pageX + "px";
+            tooltip.style.top = event.pageY + "px";
+            tooltip.innerHTML = `<strong>${word}</strong><br>${definition}`;
+            tooltip.style.display = "block";
+          });
+
+          outputDiv.appendChild(span);
         });
+      };
 
-        let outputHTML = "<h2>Word Frequency Dictionary</h2><ul>";
-        for (const [word, count] of Object.entries(dictionary)) {
-            outputHTML += `<li>${word}: ${count}</li>`;
-        }
-        outputHTML += "</ul>";
+      reader.readAsArrayBuffer(file);
+    });
+  </script>
 
-        document.getElementById('output').innerHTML = outputHTML;
-    };
-
-    reader.readAsArrayBuffer(file);
-});
-</script>
- <div id="output"></div> 
 </body>
-
-  
 </html>
