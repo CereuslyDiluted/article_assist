@@ -192,7 +192,9 @@ async function fetchFullTextArticle(url) {
   setStatus("Fetching full text…");
 
   const articleData = await getArticleFromMercury(url);
-  if (!articleData?.content) throw new Error("Full text extraction failed");
+  if (!articleData?.content || articleData.content.trim() === "") {
+  throw new Error("Empty full text returned");
+}
 
   articleTitleEl.textContent = articleData.title || "Untitled article";
   articleMetaEl.textContent = articleData.author || "";
