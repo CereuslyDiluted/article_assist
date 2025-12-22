@@ -4,12 +4,58 @@
   <meta charset="UTF-8">
   <title>Article Assist</title>
   <link rel="stylesheet" href="style.css">
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.min.js"></script>
 </head>
 
 <body>
+  
   <h1>Welcome to Article Assist</h1>
   <p>Created by CereuslyDiluted</p>
 
   <p>This site will help you understand scientific articles with clarity, humor, and microbiology‑nerd energy.</p>
+
+  <input type="file" id="fileInput" accept="application/pdf">
+
+  
+<script>
+document.getElementById('fileInput').addEventListener('change', async function() {
+    const file = this.files[0];
+    const reader = new FileReader();
+
+    reader.onload = async function() {
+        const typedarray = new Uint8Array(this.result);
+
+        const pdf = await pdfjsLib.getDocument(typedarray).promise;
+        let fullText = "";
+
+        for (let i = 1; i <= pdf.numPages; i++) {
+            const page = await pdf.getPage(i);
+            const content = await page.getTextContent();
+            const strings = content.items.map(item => item.str);
+            fullText += strings.join(" ") + " ";
+        }
+
+        const words = fullText.toLowerCase().match(/\b[a-z]+\b/g);
+        const dictionary = {};
+
+        words.forEach(word => {
+            dictionary[word] = (dictionary[word] || 0) + 1;
+        });
+
+        let outputHTML = "<h2>Word Frequency Dictionary</h2><ul>";
+        for (const [word, count] of Object.entries(dictionary)) {
+            outputHTML += `<li>${word}: ${count}</li>`;
+        }
+        outputHTML += "</ul>";
+
+        document.getElementById('output').innerHTML = outputHTML;
+    };
+
+    reader.readAsArrayBuffer(file);
+});
+</script>
+ <div id="output"></div> 
 </body>
+
+  
 </html>
