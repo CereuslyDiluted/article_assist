@@ -225,12 +225,16 @@ function displayAbstractOnly(xml, abstractText) {
 // ============= MERCURY PARSER =============
 
 async function getArticleFromMercury(url) {
-  const encodedUrl = encodeURIComponent(url);
-  const res = await fetch(`${MERCURY_ENDPOINT}${encodedUrl}`);
-  if (!res.ok) throw new Error("Mercury Parser request failed");
-  return res.json();
-}
+  const mercuryUrl = `https://mercury-parser.vercel.app/api?url=${encodeURIComponent(url)}`;
+  const proxyUrl = `https://api.allorigins.win/get?url=${encodeURIComponent(mercuryUrl)}`;
 
+  const res = await fetch(proxyUrl);
+  if (!res.ok) throw new Error("Mercury Parser proxy request failed");
+
+  const data = await res.json();
+  const parsed = JSON.parse(data.contents);
+  return parsed;
+}
 // ============= TEXT EXTRACTION =============
 
 function extractTextFromHtml(htmlString) {
