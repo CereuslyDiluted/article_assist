@@ -6,7 +6,7 @@ const MERCURY_ENDPOINT = "https://mercury-parser.vercel.app/api?url=";
 // FreeDictionaryAPI endpoint
 const DICT_ENDPOINT = "https://api.dictionaryapi.dev/api/v2/entries/en/";
 
-// Very common English words to ignore for simple English layer (Option D)
+// Very common English words to ignore for simple English layer
 const COMMON_WORDS = new Set([
   "the","a","an","and","or","but","if","then","than","when","while","of","in",
   "on","for","to","from","by","with","at","as","is","are","was","were","be",
@@ -20,45 +20,40 @@ const COMMON_WORDS = new Set([
   "use","make","made","say","says","said","show","shows","shown","get","got"
 ]);
 
-// Stopwords (can share with COMMON_WORDS; kept separate for clarity)
 const STOP_WORDS = COMMON_WORDS;
 
-// Simple name heuristic: capitalized word not at sentence start + appears rarely
-// (kept minimal to avoid false positives; you can refine)
-
-// ============= SCIENTIFIC DICTIONARIES (stubs to expand) =============
+// ============= SCIENTIFIC DICTIONARIES =============
 
 const dictMicro = {
-  pathogen: "A microorganism (such as a bacterium or virus) that can cause disease.",
+  pathogen: "A microorganism that can cause disease.",
   virulence: "The degree of pathogenicity of a microorganism.",
-  biofilm: "A structured community of microorganisms encapsulated within a self-produced polymeric matrix."
+  biofilm: "A structured community of microorganisms within a matrix."
 };
 
 const dictGenetics = {
-  genome: "The complete set of DNA, including all of its genes, in an organism.",
+  genome: "The complete set of DNA in an organism.",
   allele: "One of two or more versions of a gene.",
-  mutation: "A permanent change in the DNA sequence of a gene.",
+  mutation: "A permanent change in DNA sequence."
 };
 
 const dictImmunology = {
-  antigen: "A molecule capable of being recognized by the immune system.",
-  antibody: "A protein produced by B cells that binds to a specific antigen.",
-  cytokine: "A small protein important in cell signaling in the immune system."
+  antigen: "A molecule recognized by the immune system.",
+  antibody: "A protein produced by B cells that binds antigens.",
+  cytokine: "A signaling protein in the immune system."
 };
 
 const dictBiology = {
-  homeostasis: "The tendency of an organism to maintain internal stability.",
-  metabolism: "The chemical processes that occur within a living organism to maintain life.",
-  osmosis: "The diffusion of water across a semipermeable membrane."
+  homeostasis: "Maintenance of internal stability.",
+  metabolism: "Chemical processes that maintain life.",
+  osmosis: "Diffusion of water across a membrane."
 };
 
 const dictChemistry = {
-  molarity: "A measure of the concentration of a solute in a solution, expressed as moles per liter.",
-  catalyst: "A substance that increases the rate of a chemical reaction without being consumed.",
-  polymer: "A large molecule composed of repeating structural units."
+  molarity: "Concentration expressed as moles per liter.",
+  catalyst: "A substance that speeds up a reaction.",
+  polymer: "A molecule made of repeating units."
 };
 
-// Combine for "combined" mode
 const dictCombined = {
   ...dictMicro,
   ...dictGenetics,
@@ -78,8 +73,8 @@ const SCI_DICTIONARIES = {
 
 // ============= CACHES =============
 
-const englishDefinitionCache = new Map();   // word -> { definition, source }
-const scientificTermCache = new Map();      // word -> { definition, source }
+const englishDefinitionCache = new Map();
+const scientificTermCache = new Map();
 
 // ============= DOM REFERENCES =============
 
@@ -90,6 +85,8 @@ const toggleScientific = document.getElementById("toggleScientific");
 const toggleSimpleEnglish = document.getElementById("toggleSimpleEnglish");
 
 const statusMessageEl = document.getElementById("statusMessage");
+const pubmedNotice = document.getElementById("pubmedNotice");
+
 const articleTitleEl = document.getElementById("articleTitle");
 const articleMetaEl = document.getElementById("articleMeta");
 const articleContentEl = document.getElementById("articleContent");
@@ -99,7 +96,7 @@ const tooltipTermEl = document.getElementById("tooltipTerm");
 const tooltipSourceEl = document.getElementById("tooltipSource");
 const tooltipDefinitionEl = document.getElementById("tooltipDefinition");
 
-// ============= EVENT BINDINGS =============
+// ============= EVENT LISTENERS =============
 
 fetchArticleBtn.addEventListener("click", () => {
   const url = articleUrlInput.value.trim();
@@ -111,98 +108,126 @@ fetchArticleBtn.addEventListener("click", () => {
 });
 
 document.addEventListener("click", (e) => {
-  const target = e.target;
-  if (target.classList.contains("sci-term") || target.classList.contains("simple-term")) {
-    // Term click handled in delegated handler below
-    return;
-  }
-  // Click outside tooltip -> hide
-  if (!tooltipEl.contains(e.target)) {
-    hideTooltip();
-  }
+  if (!tooltipEl.contains(e.target)) hideTooltip();
 });
 
 articleContentEl.addEventListener("click", async (e) => {
   const target = e.target;
+
   if (target.classList.contains("sci-term")) {
+    showTooltip(
+      target.dataset.term,
+      target.dataset.definition,
+      target.dataset.source,
+      e.pageX,
+      e.pageY
+    );
+  }
+
+  if (target.classList.contains("simple-term")) {
     const word = target.dataset.term;
-    const definition = target.dataset.definition;
-    const source = target.dataset.source || "Scientific dictionary";
-    showTooltip(word, definition, source, e.pageX, e.pageY);
-  } else if (target.classList.contains("simple-term")) {
-    const word = target.dataset.term;
-    const source = "Simple English dictionary";
-    let defObj = englishDefinitionCache.get(word.toLowerCase());
-    if (!defObj) {
-      // Shouldn't happen often because we populate when building,
-      // but we can lazy-fetch as fallback
-      defObj = await getSimpleEnglishDefinition(word);
-    }
-    if (defObj && defObj.definition) {
-      showTooltip(word, defObj.definition, source, e.pageX, e.pageY);
+    const defObj = englishDefinitionCache.get(word.toLowerCase());
+    if (defObj?.definition) {
+      showTooltip(word, defObj.definition, "Simple English dictionary", e.pageX, e.pageY);
     }
   }
 });
 
-// ============= STATUS HELPERS =============
+// ============= STATUS =============
 
 function setStatus(message, type = "info") {
   statusMessageEl.textContent = message;
-  if (type === "error") {
-    statusMessageEl.style.color = "#b00020";
-  } else if (type === "success") {
-    statusMessageEl.style.color = "#2e7d32";
-  } else {
-    statusMessageEl.style.color = "#555";
-  }
+  statusMessageEl.style.color =
+    type === "error" ? "#b00020" :
+    type === "success" ? "#2e7d32" :
+    "#555";
 }
 
-// ============= FETCH + ANALYZE =============
+// ============= MAIN EXTRACTION LOGIC =============
 
 async function fetchAndAnalyzeArticle(url) {
-  setStatus("Fetching and parsing article…");
-  fetchArticleBtn.disabled = true;
-  articleTitleEl.textContent = "";
-  articleMetaEl.textContent = "";
-  articleContentEl.innerHTML = "";
   hideTooltip();
+  setStatus("Processing URL…");
+  fetchArticleBtn.disabled = true;
+  pubmedNotice.textContent = "";
 
-  try {
-    const articleData = await getArticleFromMercury(url);
-    if (!articleData || !articleData.content) {
-      setStatus("Could not extract article content from this URL.", "error");
+  if (isPubMedUrl(url)) {
+    const pmid = extractPubMedId(url);
+    if (!pmid) {
+      setStatus("Could not extract PubMed ID.", "error");
       fetchArticleBtn.disabled = false;
       return;
     }
 
-    articleTitleEl.textContent = articleData.title || "Untitled article";
-    const metaParts = [];
-    if (articleData.author) metaParts.push(articleData.author);
-    if (articleData.date_published) metaParts.push(new Date(articleData.date_published).toLocaleDateString());
-    articleMetaEl.textContent = metaParts.join(" • ");
+    setStatus("Fetching PubMed metadata…");
+    const xml = await fetchPubMedMetadata(pmid);
+    const doi = extractDOI(xml);
+    const pmcid = extractPMCID(xml);
+    const abstractText = extractAbstract(xml);
 
-    const textContent = extractTextFromHtml(articleData.content);
-    const processedHtml = await annotateArticleText(textContent);
-    articleContentEl.innerHTML = processedHtml;
+    if (pmcid) {
+      pubmedNotice.textContent = "Using PMC full text (open access).";
+      return fetchFullTextArticle(`https://www.ncbi.nlm.nih.gov/pmc/articles/${pmcid}/`);
+    }
 
-    setStatus("Article processed successfully.", "success");
-  } catch (err) {
-    console.error(err);
-    setStatus("Error fetching or processing the article.", "error");
-  } finally {
-    fetchArticleBtn.disabled = false;
+    if (doi) {
+      pubmedNotice.textContent = "Trying publisher full text via DOI…";
+      try {
+        return fetchFullTextArticle(`https://doi.org/${doi}`);
+      } catch (err) {
+        console.warn("Publisher full text failed, falling back to abstract.");
+      }
+    }
+
+    pubmedNotice.textContent = "Full text unavailable. Using PubMed abstract.";
+    return displayAbstractOnly(xml, abstractText);
   }
+
+  return fetchFullTextArticle(url);
+}
+
+// ============= FULL TEXT EXTRACTION =============
+
+async function fetchFullTextArticle(url) {
+  setStatus("Fetching full text…");
+
+  const articleData = await getArticleFromMercury(url);
+  if (!articleData?.content) throw new Error("Full text extraction failed");
+
+  articleTitleEl.textContent = articleData.title || "Untitled article";
+  articleMetaEl.textContent = articleData.author || "";
+
+  const textContent = extractTextFromHtml(articleData.content);
+  const processedHtml = await annotateArticleText(textContent);
+  articleContentEl.innerHTML = processedHtml;
+
+  setStatus("Article processed successfully.", "success");
+}
+
+// ============= ABSTRACT FALLBACK =============
+
+function displayAbstractOnly(xml, abstractText) {
+  const title = xml.querySelector("ArticleTitle")?.textContent || "Untitled";
+  const journal = xml.querySelector("Journal Title")?.textContent || "";
+  const authors = [...xml.querySelectorAll("Author")].map(a => {
+    const last = a.querySelector("LastName")?.textContent || "";
+    const fore = a.querySelector("ForeName")?.textContent || "";
+    return `${fore} ${last}`;
+  }).join(", ");
+
+  articleTitleEl.textContent = title;
+  articleMetaEl.textContent = `${authors} • ${journal}`;
+  articleContentEl.textContent = abstractText || "No abstract available.";
+
+  setStatus("Abstract processed successfully.", "success");
 }
 
 // ============= MERCURY PARSER =============
 
 async function getArticleFromMercury(url) {
   const encodedUrl = encodeURIComponent(url);
-  const endpoint = `${MERCURY_ENDPOINT}${encodedUrl}`;
-  const res = await fetch(endpoint);
-  if (!res.ok) {
-    throw new Error("Mercury Parser request failed");
-  }
+  const res = await fetch(`${MERCURY_ENDPOINT}${encodedUrl}`);
+  if (!res.ok) throw new Error("Mercury Parser request failed");
   return res.json();
 }
 
@@ -217,166 +242,112 @@ function extractTextFromHtml(htmlString) {
 // ============= TOKENIZATION + ANNOTATION =============
 
 async function annotateArticleText(text) {
-  // Simple split preserving punctuation: we’ll rebuild into HTML tokens
   const tokens = text.split(/(\s+|[,.!?;:()"'[\]{}])/);
 
   const dictMode = dictionaryModeSelect.value;
-  const sciDict = SCI_DICTIONARIES[dictMode] || dictCombined;
+  const sciDict = SCI_DICTIONARIES[dictMode];
   const sciKeys = new Set(Object.keys(sciDict).map(k => k.toLowerCase()));
 
-  const annotatedTokens = [];
+  const annotated = [];
 
   for (const token of tokens) {
-    // whitespace or punctuation: keep as-is
     if (/^\s+$/.test(token) || /^[,.;:!?()"'[\]{}]$/.test(token)) {
-      annotatedTokens.push(token);
+      annotated.push(token);
       continue;
     }
 
-    const rawWord = token;
-    const normalized = normalizeWord(rawWord);
-
-    if (!normalized) {
-      annotatedTokens.push(rawWord);
+    const raw = token;
+    const norm = normalizeWord(raw);
+    if (!norm) {
+      annotated.push(raw);
       continue;
     }
 
-    // 1) Scientific layer
-    if (toggleScientific.checked && isScientificTerm(normalized, sciKeys)) {
-      const def = sciDict[normalized.toLowerCase()];
-      const span = createSciTermSpan(rawWord, normalized, def, dictMode);
-      annotatedTokens.push(span);
+    if (toggleScientific.checked && sciKeys.has(norm)) {
+      annotated.push(createSciTermSpan(raw, norm, sciDict[norm], dictMode));
       continue;
     }
 
-    // 2) Stopwords / names (simplified)
-    if (isStopWord(normalized) || looksLikeName(rawWord)) {
-      annotatedTokens.push(rawWord);
+    if (STOP_WORDS.has(norm) || looksLikeName(raw)) {
+      annotated.push(raw);
       continue;
     }
 
-    // 3) Simple English layer
-    if (toggleSimpleEnglish.checked && shouldTrySimpleEnglish(normalized)) {
-      const defObj = await getSimpleEnglishDefinition(normalized);
-      if (defObj && defObj.definition) {
-        const span = createSimpleTermSpan(rawWord, normalized);
-        annotatedTokens.push(span);
+    if (toggleSimpleEnglish.checked && shouldTrySimpleEnglish(norm)) {
+      const defObj = await getSimpleEnglishDefinition(norm);
+      if (defObj?.definition) {
+        annotated.push(createSimpleTermSpan(raw, norm));
         continue;
       }
     }
 
-    // 4) Default: leave as plain text
-    annotatedTokens.push(rawWord);
+    annotated.push(raw);
   }
 
-  return annotatedTokens.join("");
+  return annotated.join("");
 }
 
 // ============= SCIENTIFIC TERM HELPERS =============
 
 function normalizeWord(word) {
-  return word
-    .toLowerCase()
-    .replace(/^[^a-z0-9]+|[^a-z0-9]+$/gi, "");
+  return word.toLowerCase().replace(/^[^a-z0-9]+|[^a-z0-9]+$/gi, "");
 }
 
-function isScientificTerm(normalizedWord, sciKeys) {
-  return sciKeys.has(normalizedWord.toLowerCase());
-}
-
-function createSciTermSpan(rawWord, normalized, definition, dictMode) {
-  const sourceLabel = modeToSourceLabel(dictMode);
-  const escaped = escapeHtml(rawWord);
-  const escapedDef = escapeHtml(definition || "No definition available.");
-  return `<span class="sci-term" data-term="${normalized}" data-definition="${escapedDef}" data-source="${sourceLabel}">${escaped}</span>`;
+function createSciTermSpan(raw, norm, def, mode) {
+  return `<span class="sci-term" data-term="${norm}" data-definition="${escapeHtml(def)}" data-source="${modeToSourceLabel(mode)}">${escapeHtml(raw)}</span>`;
 }
 
 function modeToSourceLabel(mode) {
-  switch (mode) {
-    case "micro":
-      return "Microbiology glossary";
-    case "genetics":
-      return "Genetics glossary";
-    case "immunology":
-      return "Immunology glossary";
-    case "biology":
-      return "Biology glossary";
-    case "chemistry":
-      return "Chemistry / Biochemistry glossary";
-    default:
-      return "Scientific glossary (combined)";
-  }
+  return {
+    micro: "Microbiology glossary",
+    genetics: "Genetics glossary",
+    immunology: "Immunology glossary",
+    biology: "Biology glossary",
+    chemistry: "Chemistry / Biochemistry glossary"
+  }[mode] || "Scientific glossary (combined)";
 }
 
 // ============= SIMPLE ENGLISH HELPERS =============
 
-function isStopWord(normalizedWord) {
-  return STOP_WORDS.has(normalizedWord.toLowerCase());
+function looksLikeName(raw) {
+  if (/[.@]/.test(raw)) return false;
+  return /^[A-Z][a-z]+$/.test(raw);
 }
 
-// Very lightweight name heuristic: capitalized word, not at sentence start,
-// but here we use a simple check on pattern (you can refine with positions).
-function looksLikeName(rawWord) {
-  // If it contains a period or is all caps, skip marking as name.
-  if (/[.@]/.test(rawWord)) return false;
-  if (/^[A-Z][a-z]+$/.test(rawWord)) {
-    return true;
-  }
-  return false;
-}
-
-// Option D heuristic for when to try simple English lookup
-function shouldTrySimpleEnglish(normalizedWord) {
-  const w = normalizedWord.toLowerCase();
-
-  // Ignore very short words (likely not worth defining unless scientific)
-  if (w.length <= 3) return false;
-
-  // Ignore very common words
-  if (COMMON_WORDS.has(w)) return false;
-
-  return true;
+function shouldTrySimpleEnglish(norm) {
+  if (norm.length <= 3) return false;
+  return !COMMON_WORDS.has(norm);
 }
 
 async function getSimpleEnglishDefinition(word) {
   const w = word.toLowerCase();
-
-  if (englishDefinitionCache.has(w)) {
-    return englishDefinitionCache.get(w);
-  }
+  if (englishDefinitionCache.has(w)) return englishDefinitionCache.get(w);
 
   try {
-    const res = await fetch(DICT_ENDPOINT + encodeURIComponent(w));
+    const res = await fetch(DICT_ENDPOINT + w);
     if (!res.ok) {
-      englishDefinitionCache.set(w, { definition: null, source: "Simple English dictionary" });
+      englishDefinitionCache.set(w, { definition: null });
       return englishDefinitionCache.get(w);
     }
     const data = await res.json();
-    // data is an array; take first meaning/definition
     const def = extractFirstDefinition(data);
-    const defObj = { definition: def, source: "Simple English dictionary" };
-    englishDefinitionCache.set(w, defObj);
-    return defObj;
-  } catch (err) {
-    console.error("Dictionary lookup error:", err);
-    englishDefinitionCache.set(w, { definition: null, source: "Simple English dictionary" });
+    englishDefinitionCache.set(w, { definition: def });
+    return englishDefinitionCache.get(w);
+  } catch {
+    englishDefinitionCache.set(w, { definition: null });
     return englishDefinitionCache.get(w);
   }
 }
 
 function extractFirstDefinition(apiResponse) {
-  if (!Array.isArray(apiResponse) || apiResponse.length === 0) return null;
+  if (!Array.isArray(apiResponse)) return null;
   const entry = apiResponse[0];
-  if (!entry.meanings || entry.meanings.length === 0) return null;
-  const meaning = entry.meanings[0];
-  if (!meaning.definitions || meaning.definitions.length === 0) return null;
-  const def = meaning.definitions[0].definition || null;
-  return def;
+  const meaning = entry?.meanings?.[0];
+  return meaning?.definitions?.[0]?.definition || null;
 }
 
-function createSimpleTermSpan(rawWord, normalized) {
-  const escaped = escapeHtml(rawWord);
-  return `<span class="simple-term" data-term="${normalized}">${escaped}</span>`;
+function createSimpleTermSpan(raw, norm) {
+  return `<span class="simple-term" data-term="${norm}">${escapeHtml(raw)}</span>`;
 }
 
 // ============= TOOLTIP =============
@@ -387,19 +358,15 @@ function showTooltip(term, definition, source, x, y) {
   tooltipDefinitionEl.textContent = definition;
   tooltipEl.classList.remove("hidden");
 
-  const tooltipRect = tooltipEl.getBoundingClientRect();
-  const offset = 10;
-  let left = x + offset;
-  let top = y + offset;
+  const rect = tooltipEl.getBoundingClientRect();
+  let left = x + 10;
+  let top = y + 10;
 
-  const viewportWidth = window.innerWidth;
-  const viewportHeight = window.innerHeight;
-
-  if (left + tooltipRect.width > viewportWidth - 10) {
-    left = viewportWidth - tooltipRect.width - 10;
+  if (left + rect.width > window.innerWidth) {
+    left = window.innerWidth - rect.width - 10;
   }
-  if (top + tooltipRect.height > viewportHeight - 10) {
-    top = viewportHeight - tooltipRect.height - 10;
+  if (top + rect.height > window.innerHeight) {
+    top = window.innerHeight - rect.height - 10;
   }
 
   tooltipEl.style.left = `${left}px`;
@@ -418,6 +385,36 @@ function escapeHtml(str) {
     .replace(/</g, "&lt;")
     .replace(/>/g, "&gt;")
     .replace(/"/g, "&quot;");
+}
+
+// ============= PUBMED HELPERS =============
+
+function isPubMedUrl(url) {
+  return url.includes("pubmed.ncbi.nlm.nih.gov");
+}
+
+function extractPubMedId(url) {
+  const match = url.match(/pubmed\.ncbi\.nlm\.nih\.gov\/(\d+)/);
+  return match ? match[1] : null;
+}
+
+async function fetchPubMedMetadata(pmid) {
+  const apiUrl = `https://eutils.ncbi.nlm.nih.gov/entrez/eutils/efetch.fcgi?db=pubmed&id=${pmid}&retmode=xml`;
+  const res = await fetch(apiUrl);
+  const xml = await res.text();
+  return new DOMParser().parseFromString(xml, "text/xml");
+}
+
+function extractDOI(xml) {
+  return xml.querySelector("ArticleId[IdType='doi']")?.textContent || null;
+}
+
+function extractPMCID(xml) {
+  return xml.querySelector("ArticleId[IdType='pmc']")?.textContent || null;
+}
+
+function extractAbstract(xml) {
+  return xml.querySelector("Abstract AbstractText")?.textContent || null;
 }
 
 // ============= INITIAL STATUS =============
