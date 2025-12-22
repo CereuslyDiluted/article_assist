@@ -137,6 +137,12 @@ main {
   color: #555;
 }
 
+#pubmedNotice {
+  font-size: 0.85rem;
+  color: #777;
+  margin-bottom: 1rem;
+}
+
 /* Article */
 
 #articleSection {
