@@ -225,15 +225,10 @@ function displayAbstractOnly(xml, abstractText) {
 // ============= MERCURY PARSER =============
 
 async function getArticleFromMercury(url) {
-  const mercuryUrl = `https://mercury-parser.vercel.app/api?url=${encodeURIComponent(url)}`;
-  const proxyUrl = `https://api.allorigins.win/get?url=${encodeURIComponent(mercuryUrl)}`;
-
-  const res = await fetch(proxyUrl);
-  if (!res.ok) throw new Error("Mercury Parser proxy request failed");
-
-  const data = await res.json();
-  const parsed = JSON.parse(data.contents);
-  return parsed;
+  const endpoint = `https://mercury-api.vercel.app/parser?url=${encodeURIComponent(url)}`;
+  const res = await fetch(endpoint);
+  if (!res.ok) throw new Error("Mercury Parser request failed");
+  return res.json();
 }
 // ============= TEXT EXTRACTION =============
 
