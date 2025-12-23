@@ -1,7 +1,7 @@
 // ============= CONFIG =============
 
-// Mercury Parser community endpoint
-const MERCURY_ENDPOINT = "https://mercury-parser.vercel.app/api?url=";
+// CORS-safe Mercury Parser endpoint
+const MERCURY_ENDPOINT = "https://mercury-api.vercel.app/parser?url=";
 
 // FreeDictionaryAPI endpoint
 const DICT_ENDPOINT = "https://api.dictionaryapi.dev/api/v2/entries/en/";
@@ -191,19 +191,35 @@ async function fetchAndAnalyzeArticle(url) {
 async function fetchFullTextArticle(url) {
   setStatus("Fetching full text…");
 
-  const articleData = await getArticleFromMercury(url);
-  if (!articleData?.content || articleData.content.trim() === "") {
-  throw new Error("Empty full text returned");
-}
+  try {
+    const articleData = await getArticleFromMercury(url);
 
-  articleTitleEl.textContent = articleData.title || "Untitled article";
-  articleMetaEl.textContent = articleData.author || "";
+    if (!articleData?.content || articleData.content.trim() === "") {
+      throw new Error("Empty full text returned");
+    }
 
-  const textContent = extractTextFromHtml(articleData.content);
-  const processedHtml = await annotateArticleText(textContent);
-  articleContentEl.innerHTML = processedHtml;
+    articleTitleEl.textContent = articleData.title || "Untitled article";
+    articleMetaEl.textContent = articleData.author || "";
 
-  setStatus("Article processed successfully.", "success");
+    const textContent = extractTextFromHtml(articleData.content);
+    const processedHtml = await annotateArticleText(textContent);
+    articleContentEl.innerHTML = processedHtml;
+
+    setStatus("Article processed successfully.", "success");
+  } catch (err) {
+    console.warn("Full text failed, falling back to abstract if available.");
+    const pmid = extractPubMedId(articleUrlInput.value.trim());
+    if (pmid) {
+      const xml = await fetchPubMedMetadata(pmid);
+      const abstractText = extractAbstract(xml);
+      displayAbstractOnly(xml, abstractText);
+      pubmedNotice.textContent = "Full text unavailable. Using PubMed abstract.";
+      return;
+    }
+    setStatus("Could not extract article content from this URL.", "error");
+  } finally {
+    fetchArticleBtn.disabled = false;
+  }
 }
 
 // ============= ABSTRACT FALLBACK =============
@@ -227,11 +243,12 @@ function displayAbstractOnly(xml, abstractText) {
 // ============= MERCURY PARSER =============
 
 async function getArticleFromMercury(url) {
-  const endpoint = `https://mercury-api.vercel.app/parser?url=${encodeURIComponent(url)}`;
+  const endpoint = `${MERCURY_ENDPOINT}${encodeURIComponent(url)}`;
   const res = await fetch(endpoint);
   if (!res.ok) throw new Error("Mercury Parser request failed");
   return res.json();
 }
+
 // ============= TEXT EXTRACTION =============
 
 function extractTextFromHtml(htmlString) {
