@@ -47,8 +47,6 @@ main {
   margin: 0 auto;
 }
 
-/* Controls */
-
 #controls {
   background-color: #ffffff;
   border: 1px solid var(--border);
@@ -125,8 +123,6 @@ main {
   font-size: 0.9rem;
 }
 
-/* Status */
-
 #statusSection {
   min-height: 1.2rem;
   margin-bottom: 0.75rem;
@@ -142,8 +138,6 @@ main {
   color: #777;
   margin-bottom: 1rem;
 }
-
-/* Article */
 
 #articleSection {
   background-color: #ffffff;
@@ -170,8 +164,6 @@ main {
   font-size: 0.98rem;
 }
 
-/* Term styling */
-
 .sci-term {
   color: var(--accent);
   cursor: pointer;
@@ -182,8 +174,6 @@ main {
   border-bottom: 1px dashed var(--light-gray);
   cursor: pointer;
 }
-
-/* Tooltip */
 
 .tooltip {
   position: absolute;
@@ -215,8 +205,6 @@ main {
 .tooltip-definition {
   font-size: 0.86rem;
 }
-
-/* Responsive */
 
 @media (max-width: 600px) {
   main {
