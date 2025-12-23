@@ -1,3 +1,7 @@
+// ============= INITIAL STATUS =============
+
+setStatus("Paste a URL to begin.");
+
 // ============= CONFIG =============
 
 // CORS-safe Mercury Parser endpoint
