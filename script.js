@@ -439,6 +439,4 @@ function extractAbstract(xml) {
   return xml.querySelector("Abstract AbstractText")?.textContent || null;
 }
 
-// ============= INITIAL STATUS =============
 
-setStatus("Paste a URL to begin.");
